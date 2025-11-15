@@ -19,7 +19,7 @@ const dspInfo = {
         wave: 2, 
         name: 'AllMunA Transportlogistik GmbH', 
         email: 'dap8-dispatcher@allmuna.at',
-        webhook: 'https://hooks.chime.aws/incomingwebhooks/07b12ac5-055e-48d9-a9db-dfa6c189ce01?token=YWJGcGRCV298MXxfc09OYmlCajBta0Fkek1qaTJGVlQwUDVsaUswTTlhaDJyd1N1eVZZOF9r'
+        webhook: 'https://hooks.chime.aws/incomingwebhooks/07b12ac5-055e-48d9-a9db-dfa6c189ce01?token=YWJGcGRCV098MXxfc09OYmlCajBta0Fkek1qaTJGVlQwUDVsaUswTTlhaDJyd1N1eVZZOF9r'
     },
     'MDTR': { 
         wave: 3, 
@@ -176,7 +176,7 @@ function processFile(file, type) {
         },
         header: true,
         skipEmptyLines: true,
-        delimiter: ';'
+        delimiter: type === 'stem' ? ';' : ','
     });
 }
 
@@ -218,15 +218,15 @@ function loadCachedStemData() {
             
             document.getElementById('stemUploadZone').style.display = 'none';
             document.getElementById('stemFileInfo').style.display = 'block';
-            document.querySelector('#stemFileInfo .file-name').textContent = `📄 ${cachedFilename} (Cached)`;
-            document.querySelector('#stemFileInfo .file-stats').textContent = `${stemData.length} locations loaded - Cached on ${dateStr}`;
+            document.querySelector('#stemFileInfo .file-name').textContent = `📄 ${cachedFilename} (Cached from ${dateStr})`;
+            document.querySelector('#stemFileInfo .file-stats').textContent = `${stemData.length} locations loaded`;
             document.getElementById('stemStatus').textContent = 'Loaded (Cached)';
             document.getElementById('stemStatus').classList.add('loaded');
             
             checkEnableButtons();
         }
     } catch (e) {
-        console.log('Unable to load cached stem data');
+        console.log('Unable to load cached data');
     }
 }
 
@@ -251,27 +251,16 @@ function clearStemData() {
 
 // Process search data
 function processSearchData(data, filename) {
-    // Parse different CSV formats (with quotes and semicolons or regular)
-    if (data.length > 0 && Object.keys(data[0]).length === 1) {
-        // Unfiltered format with quotes
-        const cleanData = [];
-        data.forEach(row => {
-            const firstKey = Object.keys(row)[0];
-            const values = row[firstKey].split('","').map(v => v.replace(/^"|"$/g, ''));
-            
-            if (values.length > 1) {
-                const obj = {};
-                const headers = firstKey.split(',').map(h => h.replace(/^"|"$/g, ''));
-                headers.forEach((header, index) => {
-                    obj[header] = values[index] || '';
-                });
-                cleanData.push(obj);
-            }
-        });
-        searchData = cleanData;
-    } else {
-        searchData = data;
-    }
+    // Clean the data
+    const cleanData = data.map(row => {
+        const cleanRow = {};
+        for (let key in row) {
+            cleanRow[key] = typeof row[key] === 'string' ? row[key].replace(/^"|"$/g, '') : row[key];
+        }
+        return cleanRow;
+    });
+    
+    searchData = cleanData;
     
     // Update UI
     document.getElementById('searchUploadZone').style.display = 'none';
@@ -299,27 +288,16 @@ function clearSearchData() {
 
 // Process DSP search data
 function processDSPSearchData(data, filename) {
-    // Parse different CSV formats
-    if (data.length > 0 && Object.keys(data[0]).length === 1) {
-        // Unfiltered format with quotes
-        const cleanData = [];
-        data.forEach(row => {
-            const firstKey = Object.keys(row)[0];
-            const values = row[firstKey].split('","').map(v => v.replace(/^"|"$/g, ''));
-            
-            if (values.length > 1) {
-                const obj = {};
-                const headers = firstKey.split(',').map(h => h.replace(/^"|"$/g, ''));
-                headers.forEach((header, index) => {
-                    obj[header] = values[index] || '';
-                });
-                cleanData.push(obj);
-            }
-        });
-        dspData = cleanData;
-    } else {
-        dspData = data;
-    }
+    // Clean the data
+    const cleanData = data.map(row => {
+        const cleanRow = {};
+        for (let key in row) {
+            cleanRow[key] = typeof row[key] === 'string' ? row[key].replace(/^"|"$/g, '') : row[key];
+        }
+        return cleanRow;
+    });
+    
+    dspData = cleanData;
     
     // Enable HVTS generation if we have DSP data
     if (dspData && dspData.length > 0) {
@@ -337,7 +315,7 @@ function checkEnableButtons() {
     document.getElementById('reloadSearchResults').disabled = !hasSearch;
 }
 
-// Generate barcodes
+// Generate barcodes - FIXED VERSION
 function generateBarcodes() {
     if (!stemData || !searchData) return;
     
@@ -350,12 +328,23 @@ function generateBarcodes() {
     
     searchData.forEach(item => {
         const trackingId = item['Tracking ID'];
-        const sortZone = item['Sort Zone'] || item['Manifest Route Code'] || 'Unknown';
+        const sortZone = item['Sort Zone'] || '';
         
         if (trackingId && !packages.has(trackingId)) {
+            // Find the resource ID from stem data
+            let resourceId = sortZone; // Default to sort zone if not found
+            
+            if (sortZone) {
+                const stemMatch = stemData.find(stem => stem.label === sortZone);
+                if (stemMatch) {
+                    resourceId = stemMatch.resourceId;
+                }
+            }
+            
             packages.set(trackingId, {
                 trackingId: trackingId,
                 sortZone: sortZone,
+                resourceId: resourceId,
                 cluster: item['Cluster'] || '',
                 aisle: item['Aisle'] || ''
             });
@@ -411,7 +400,7 @@ function generateBarcodes() {
     showNotification(`Generated barcodes for ${packagesArray.length} packages. Use arrows to navigate.`, 'success');
 }
 
-// Display single barcode
+// Display single barcode - FIXED VERSION
 function displaySingleBarcode(index) {
     const packages = window.currentPackages;
     if (!packages || index < 0 || index >= packages.length) return;
@@ -431,18 +420,18 @@ function displaySingleBarcode(index) {
         ${pkg.cluster ? `<p>Cluster: ${pkg.cluster} | Aisle: ${pkg.aisle}</p>` : ''}
         <div class="barcode-images-single">
             <div class="barcode-container-single">
-                <div class="qr-wrapper" id="qr-tracking-wrapper">
+                <div class="qr-wrapper">
                     <canvas id="qr-tracking-current"></canvas>
                 </div>
                 <div class="barcode-label">QR Tracking</div>
                 <div class="barcode-value">${pkg.trackingId}</div>
             </div>
             <div class="barcode-container-single">
-                <div class="qr-wrapper" id="qr-sz-wrapper">
+                <div class="qr-wrapper">
                     <canvas id="qr-sz-current"></canvas>
                 </div>
                 <div class="barcode-label">QR Sort Zone</div>
-                <div class="barcode-value">${pkg.sortZone}</div>
+                <div class="barcode-value">${pkg.resourceId}</div>
             </div>
         </div>
     `;
@@ -458,7 +447,7 @@ function displaySingleBarcode(index) {
     
     // Generate QR codes with correct aspect ratio
     setTimeout(() => {
-        // QR for tracking ID - solid black
+        // QR for tracking ID (AT... number)
         const trackingCanvas = document.getElementById('qr-tracking-current');
         QRCode.toCanvas(trackingCanvas, pkg.trackingId, {
             width: 256,
@@ -469,16 +458,12 @@ function displaySingleBarcode(index) {
             },
             errorCorrectionLevel: 'M'
         }, function(error) {
-            if (!error) {
-                // Ensure square aspect ratio
-                trackingCanvas.style.width = '200px';
-                trackingCanvas.style.height = '200px';
-            }
+            if (error) console.error('Error generating tracking QR:', error);
         });
         
-        // QR for sort zone - solid black
+        // QR for sort zone (Resource ID from stem data)
         const szCanvas = document.getElementById('qr-sz-current');
-        QRCode.toCanvas(szCanvas, pkg.sortZone, {
+        QRCode.toCanvas(szCanvas, pkg.resourceId, {
             width: 256,
             margin: 2,
             color: {
@@ -487,11 +472,7 @@ function displaySingleBarcode(index) {
             },
             errorCorrectionLevel: 'M'
         }, function(error) {
-            if (!error) {
-                // Ensure square aspect ratio
-                szCanvas.style.width = '200px';
-                szCanvas.style.height = '200px';
-            }
+            if (error) console.error('Error generating sort zone QR:', error);
         });
     }, 100);
 }
@@ -507,7 +488,7 @@ function navigateBarcode(direction) {
 // Make navigation functions available globally
 window.navigateBarcode = navigateBarcode;
 
-// Generate HVTS sheets
+// Generate HVTS sheets - FIXED VERSION
 function generateHVTS() {
     if (!dspData || dspData.length === 0) {
         showNotification('No DSP data available. Please reload search results with DSP information.', 'error');
@@ -517,13 +498,14 @@ function generateHVTS() {
     const resultsContainer = document.getElementById('hvtsResults');
     resultsContainer.innerHTML = '';
     
-    // Group packages by DSP
+    // Group packages by DSP Name
     const dspPackages = new Map();
     
     dspData.forEach(item => {
-        const dspName = item['DSP Name'] || item['DSP'];
+        const dspName = item['DSP Name'];
         const trackingId = item['Tracking ID'];
-        const route = item['Route Code'] || item['Manifest Route Code'] || '';
+        const routeCode = item['Route Code']; // CA_A... codes
+        const orderAmount = item['Order Amount'] || '0';
         
         if (dspName && trackingId) {
             if (!dspPackages.has(dspName)) {
@@ -532,15 +514,15 @@ function generateHVTS() {
             
             dspPackages.get(dspName).push({
                 trackingId: trackingId,
-                route: route,
-                orderAmount: item['Order Amount'] || '0'
+                routeCode: routeCode,
+                orderAmount: orderAmount
             });
         }
     });
     
     // Generate HVTS for each DSP
-    dspPackages.forEach((packages, dspCode) => {
-        const hvtsItem = createHVTSItem(dspCode, packages);
+    dspPackages.forEach((packages, dspName) => {
+        const hvtsItem = createHVTSItem(dspName, packages);
         resultsContainer.appendChild(hvtsItem);
     });
     
@@ -552,16 +534,15 @@ function generateHVTS() {
     }
 }
 
-// Create HVTS item
-function createHVTSItem(dspCode, packages) {
-    // Try to find DSP info by code or name
-    let dsp = dspInfo[dspCode];
+// Create HVTS item - FIXED VERSION
+function createHVTSItem(dspName, packages) {
+    // Find DSP info by name
+    let dsp = dspInfo[dspName];
     
-    // If not found, try to find by partial match
+    // If not found, search by name match
     if (!dsp) {
         for (let key in dspInfo) {
-            if (key.toLowerCase().includes(dspCode.toLowerCase()) || 
-                dspCode.toLowerCase().includes(key.toLowerCase())) {
+            if (dspInfo[key].name === dspName) {
                 dsp = dspInfo[key];
                 break;
             }
@@ -570,7 +551,7 @@ function createHVTSItem(dspCode, packages) {
     
     // If still not found, create default
     if (!dsp) {
-        dsp = { name: dspCode, email: 'dap8-dispatcher@amazon.com', wave: 0 };
+        dsp = { name: dspName, email: 'dap8-dispatcher@amazon.com', wave: 0 };
     }
     
     const totalValue = packages.reduce((sum, pkg) => sum + parseFloat(pkg.orderAmount || 0), 0);
@@ -583,7 +564,7 @@ function createHVTSItem(dspCode, packages) {
         <div class="hvts-info">
             <h4>${dsp.name} ${dsp.wave ? `(Wave ${dsp.wave})` : ''}</h4>
             <p>Packages: ${packages.length} | Total Value: €${totalValue.toFixed(2)}</p>
-            <p style="font-size: 0.8rem; color: var(--ice-blue);">${dsp.email}</p>
+            <p style="font-size: 0.8rem; color: var(--secondary-color);">${dsp.email}</p>
         </div>
         <button class="download-btn" 
                 data-dsp-name="${dsp.name}" 
@@ -608,7 +589,7 @@ function downloadHVTSFromButton(button) {
     downloadHVTS(dspName, dspEmail, dspWave, packages);
 }
 
-// Download HVTS PDF
+// Download HVTS PDF - FIXED VERSION
 function downloadHVTS(dspName, dspEmail, dspWave, packages) {
     // Create PDF using jsPDF
     const { jsPDF } = window.jspdf;
@@ -620,8 +601,8 @@ function downloadHVTS(dspName, dspEmail, dspWave, packages) {
     
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(20);
-    // Show DSP code instead of STSA
-    const dspCode = Object.keys(dspInfo).find(key => dspInfo[key].name === dspName) || 'DSP';
+    // Show DSP code instead of full name in header
+    const dspCode = Object.keys(dspInfo).find(key => dspInfo[key].name === dspName && key.length <= 4) || 'DSP';
     doc.text(`High-Value Transfer Sheet - ${dspCode}`, 105, 15, { align: 'center' });
     
     doc.setFontSize(12);
@@ -650,9 +631,11 @@ function downloadHVTS(dspName, dspEmail, dspWave, packages) {
     doc.setFillColor(135, 206, 235);
     doc.rect(20, 80, 170, 10, 'F');
     doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
     doc.text('Tracking ID', 25, 87);
-    doc.text('Route', 100, 87);
-    doc.text('Check', 150, 87);
+    doc.text('Route Code', 100, 87);
+    doc.text('Check', 160, 87);
+    doc.setFont(undefined, 'normal');
     
     // Table content
     let yPos = 95;
@@ -664,9 +647,11 @@ function downloadHVTS(dspName, dspEmail, dspWave, packages) {
             doc.setFillColor(135, 206, 235);
             doc.rect(20, 20, 170, 10, 'F');
             doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
             doc.text('Tracking ID', 25, 27);
-            doc.text('Route', 100, 27);
-            doc.text('Check', 150, 27);
+            doc.text('Route Code', 100, 27);
+            doc.text('Check', 160, 27);
+            doc.setFont(undefined, 'normal');
             yPos = 35;
         }
         
@@ -678,8 +663,8 @@ function downloadHVTS(dspName, dspEmail, dspWave, packages) {
         doc.setFontSize(10);
         doc.setTextColor(0, 0, 0);
         doc.text(pkg.trackingId, 25, yPos);
-        doc.text(pkg.route || '-', 100, yPos);
-        doc.rect(150, yPos - 4, 7, 7);
+        doc.text(pkg.routeCode || '-', 100, yPos);
+        doc.rect(160, yPos - 4, 7, 7);
         
         yPos += 10;
     });
@@ -786,4 +771,3 @@ function showNotification(message, type) {
 // Make downloadHVTS available globally
 window.downloadHVTS = downloadHVTS;
 window.downloadHVTSFromButton = downloadHVTSFromButton;
-window.navigateBarcode = navigateBarcode;
