@@ -1,0 +1,57 @@
+# Atlas 2.0 - DAP8 Operations
+
+Atlas 2.0 is a web-based utility tool designed for DAP8 Operations. It serves as a centralized dashboard to process logistics data, generate essential barcodes for sorting, and manage high-value package handoffs to Delivery Service Partners (DSPs).
+
+This "Winter Edition" features a snow effect and a theme-appropriate UI.
+
+## ✨ Features
+
+* **Stem Data Upload:** Upload a CSV file (semicolon-delimited) containing equipment and location details (e.g., sort zones, resource IDs).
+* **Data Caching:** Stem data is cached in the browser's `localStorage` for persistence across sessions.
+* **Search Results Upload:** Upload a CSV file (comma-delimited) with package details, including tracking IDs and sort zones.
+* **Barcode Generation:**
+    * Merges Stem and Search data to find the correct `resourceId` for a package's `sortZone`.
+    * Generates two QR codes for each unique package: one for the **Tracking ID** and one for the **Sort Zone (Resource ID)**.
+    * Provides a simple navigation interface to view barcodes one by one.
+* **DSP Processing:**
+    * **HVTS Generation:** Ingests a separate "Search Results with DSP" file to generate High-Value Transfer Sheets (HVTS).
+    * **PDF Download:** Creates downloadable PDF copies of the HVTS for each DSP, listing all high-value packages, their route codes, and a signature line.
+* **Chime Notifications:** Sends automated notifications to DSPs via hardcoded Amazon Chime webhooks to alert them about their high-value packages.
+
+## 🚀 How to Use
+
+The application is broken down into 5 sequential steps:
+
+1.  **Step 1: Stem Data Upload**
+    * Drag and drop or click to upload the "Equipment Details" CSV file. This file must use a **semicolon (`;`)** as a delimiter.
+    * If you have used the tool before, this data may already be loaded from your browser's cache.
+
+2.  **Step 2: Search Results Upload**
+    * Drag and drop or click to upload the "Search Results" CSV file. This file must use a **comma (`,`)** as a delimiter.
+
+3.  **Step 3: Generate Barcodes**
+    * Once both files are loaded, the "Generate Sort Zone Barcodes" button will become active.
+    * Click it to see the first package. Use the "Next" and "Previous" arrow buttons to navigate through all package barcodes.
+
+4.  **Step 4: DSP Processing**
+    * Click **"Reload Search Results with DSP"** and upload the search file that contains DSP assignment information (DSP Name, Order Amount, etc.).
+    * Click **"Generate HVTS Sheets"**. This will create a list of all DSPs with high-value packages.
+    * Click the "Download PDF" button next to a DSP's name to save their HVTS.
+
+5.  **Step 5: Send Notifications**
+    * After generating HVTS, click **"Send Chime Notifications"**.
+    * The tool will automatically send a message to the pre-configured Chime webhook for each DSP listed in the HVTS results.
+
+## 🛠️ Technologies Used
+
+* **Frontend:** HTML5, CSS3, Vanilla JavaScript
+* **JavaScript Libraries:**
+    * **PapaParse:** For client-side CSV file parsing.
+    * **QRCode.js:** For generating QR codes.
+    * **jsPDF:** For generating the HVTS PDF documents.
+    * **JsBarcode:** Included in the project.
+
+## 👥 Credits
+
+* **@tbadakar** (Head Developer)
+* **@marwasad** (Supporter)
