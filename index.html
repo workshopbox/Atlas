@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atlas 2.0 - DAP8 Operations</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <!-- Snow effect -->
+    <div class="snow-container">
+        <div class="snow"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo-section">
+                <svg class="logo" viewBox="0 0 100 100" width="50" height="50">
+                    <circle cx="50" cy="50" r="45" fill="#1e3a5f"/>
+                    <path d="M50 20 L65 40 L80 42 L65 56 L70 71 L50 60 L30 71 L35 56 L20 42 L35 40 Z" fill="#87CEEB"/>
+                </svg>
+                <h1>Atlas 2.0</h1>
+                <span class="subtitle">DAP8 Operations Center</span>
+            </div>
+            <div class="status-indicators">
+                <div class="status-item">
+                    <div class="status-dot active"></div>
+                    <span>System Active</span>
+                </div>
+                <div class="date-time" id="datetime"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Step 1: Stem Data -->
+        <div class="card">
+            <div class="card-header">
+                <span class="step-number">1</span>
+                <h2>Stem Data Upload</h2>
+                <div class="status-badge" id="stemStatus">Not Loaded</div>
+            </div>
+            <div class="card-body">
+                <div class="upload-zone" id="stemUploadZone">
+                    <svg class="upload-icon" viewBox="0 0 24 24" width="48" height="48">
+                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M8,15.74L9.85,15.28L8.97,17L11,13L9.15,13.46L10.03,11.74L8,15.74Z"/>
+                    </svg>
+                    <p>Drop Equipment Details file here or click to browse</p>
+                    <input type="file" id="stemFileInput" accept=".csv" style="display: none;">
+                </div>
+                <div class="file-info" id="stemFileInfo" style="display: none;">
+                    <div class="file-name"></div>
+                    <div class="file-stats"></div>
+                    <button class="btn-secondary" id="clearStemData">Clear Data</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Search Results -->
+        <div class="card">
+            <div class="card-header">
+                <span class="step-number">2</span>
+                <h2>Search Results Upload</h2>
+                <div class="status-badge" id="searchStatus">Not Loaded</div>
+            </div>
+            <div class="card-body">
+                <div class="upload-zone" id="searchUploadZone">
+                    <svg class="upload-icon" viewBox="0 0 24 24" width="48" height="48">
+                        <path d="M9,10V16H15V10H19L12,3L5,10H9M12,5.8L14.2,8H13V14H11V8H9.8L12,5.8M19,18H5V20H19V18Z"/>
+                    </svg>
+                    <p>Drop Search Results file here or click to browse</p>
+                    <input type="file" id="searchFileInput" accept=".csv" style="display: none;">
+                </div>
+                <div class="file-info" id="searchFileInfo" style="display: none;">
+                    <div class="file-name"></div>
+                    <div class="file-stats"></div>
+                    <button class="btn-secondary" id="clearSearchData">Clear Data</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Generate Barcodes -->
+        <div class="card">
+            <div class="card-header">
+                <span class="step-number">3</span>
+                <h2>Barcode Generation</h2>
+            </div>
+            <div class="card-body">
+                <button class="btn-primary" id="generateBarcodes" disabled>
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path d="M3,11H5V13H3V11M7,5H9V19H7V5M11,5H13V19H11V5M15,5H17V19H15V5M19,11H21V13H19V11Z"/>
+                    </svg>
+                    Generate Sort Zone Barcodes
+                </button>
+                <div id="barcodeResults" class="barcode-results"></div>
+            </div>
+        </div>
+
+        <!-- Step 4: DSP Processing -->
+        <div class="card">
+            <div class="card-header">
+                <span class="step-number">4</span>
+                <h2>DSP Processing</h2>
+            </div>
+            <div class="card-body">
+                <div class="dsp-controls">
+                    <button class="btn-primary" id="reloadSearchResults" disabled>
+                        <svg viewBox="0 0 24 24" width="20" height="20">
+                            <path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z"/>
+                        </svg>
+                        Reload Search Results with DSP
+                    </button>
+                    <input type="file" id="dspSearchFileInput" accept=".csv" style="display: none;">
+                </div>
+                <button class="btn-primary" id="generateHVTS" disabled>
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M10,19L12,15H9V10H15V15L13,19H10Z"/>
+                    </svg>
+                    Generate HVTS Sheets
+                </button>
+                <div id="hvtsResults" class="hvts-results"></div>
+            </div>
+        </div>
+
+        <!-- Step 5: Send Notifications -->
+        <div class="card">
+            <div class="card-header">
+                <span class="step-number">5</span>
+                <h2>Notifications</h2>
+            </div>
+            <div class="card-body">
+                <button class="btn-accent" id="sendChime" disabled>
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path d="M21,19V20H3V19L5,17V11C5,7.9 7.03,5.17 10,4.29C10,4.19 10,4.1 10,4A2,2 0 0,1 12,2A2,2 0 0,1 14,4C14,4.1 14,4.19 14,4.29C16.97,5.17 19,7.9 19,11V17L21,19M14,21A2,2 0 0,1 12,23A2,2 0 0,1 10,21"/>
+                    </svg>
+                    Send Chime Notifications
+                </button>
+                <div id="notificationStatus" class="notification-status"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <p>© 2025 Atlas 2.0 - DAP8 Operations</p>
+            <p>Winter Edition ❄️</p>
+        </div>
+    </footer>
+
+    <script src="scripts.js"></script>
+</body>
+</html>
