@@ -128,6 +128,7 @@ function initializeApp() {
     // Generate buttons
     document.getElementById('generateBarcodes').addEventListener('click', generateBarcodes);
     document.getElementById('generateHVTS').addEventListener('click', generateHVTS);
+    document.getElementById('downloadAllHVTS').addEventListener('click', downloadAllHVTS);
     document.getElementById('sendChime').addEventListener('click', sendChimeNotifications);
     
     // Check for cached stem data
@@ -164,20 +165,47 @@ function handleFileSelect(e, type) {
 
 // Process CSV file
 function processFile(file, type) {
-    Papa.parse(file, {
-        complete: (results) => {
-            if (type === 'stem') {
-                processStemData(results.data, file.name);
-            } else if (type === 'search') {
-                processSearchData(results.data, file.name);
-            } else if (type === 'dsp') {
-                processDSPSearchData(results.data, file.name);
+    // First, read a sample to detect delimiter
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const firstLine = text.split('\n')[0];
+        
+        // Auto-detect delimiter
+        let delimiter = ',';
+        if (type === 'stem') {
+            delimiter = ';'; // Stem always uses semicolon
+        } else {
+            // For search files, detect based on first line
+            const commaCount = (firstLine.match(/,/g) || []).length;
+            const semicolonCount = (firstLine.match(/;/g) || []).length;
+            
+            if (semicolonCount > commaCount) {
+                delimiter = ';';
+                console.log('Detected SEMICOLON delimiter for search file');
+            } else {
+                delimiter = ',';
+                console.log('Detected COMMA delimiter for search file');
             }
-        },
-        header: true,
-        skipEmptyLines: true,
-        delimiter: type === 'stem' ? ';' : ','
-    });
+        }
+        
+        // Now parse with detected delimiter
+        Papa.parse(file, {
+            complete: (results) => {
+                if (type === 'stem') {
+                    processStemData(results.data, file.name);
+                } else if (type === 'search') {
+                    processSearchData(results.data, file.name);
+                } else if (type === 'dsp') {
+                    processDSPSearchData(results.data, file.name);
+                }
+            },
+            header: true,
+            skipEmptyLines: true,
+            delimiter: delimiter
+        });
+    };
+    reader.readAsText(file);
 }
 
 // Process stem data
@@ -251,6 +279,11 @@ function clearStemData() {
 
 // Process search data
 function processSearchData(data, filename) {
+    console.log('=== Processing Search Data ===');
+    console.log('Raw data length:', data.length);
+    console.log('First row raw:', data[0]);
+    console.log('First row keys:', data[0] ? Object.keys(data[0]) : 'NO DATA');
+    
     // Clean the data
     const cleanData = data.map(row => {
         const cleanRow = {};
@@ -261,6 +294,11 @@ function processSearchData(data, filename) {
     });
     
     searchData = cleanData;
+    
+    console.log('Clean data length:', searchData.length);
+    console.log('First clean row:', searchData[0]);
+    console.log('Tracking ID from first row:', searchData[0] ? searchData[0]['Tracking ID'] : 'NO DATA');
+    console.log('Sort Zone from first row:', searchData[0] ? searchData[0]['Sort Zone'] : 'NO DATA');
     
     // Update UI
     document.getElementById('searchUploadZone').style.display = 'none';
@@ -288,6 +326,11 @@ function clearSearchData() {
 
 // Process DSP search data
 function processDSPSearchData(data, filename) {
+    console.log('=== Processing DSP Search Data ===');
+    console.log('Raw data length:', data.length);
+    console.log('First row raw:', data[0]);
+    console.log('First row keys:', data[0] ? Object.keys(data[0]) : 'NO DATA');
+    
     // Clean the data
     const cleanData = data.map(row => {
         const cleanRow = {};
@@ -298,6 +341,12 @@ function processDSPSearchData(data, filename) {
     });
     
     dspData = cleanData;
+    
+    console.log('Clean DSP data length:', dspData.length);
+    console.log('First clean row:', dspData[0]);
+    console.log('Tracking ID from first row:', dspData[0] ? dspData[0]['Tracking ID'] : 'NO DATA');
+    console.log('DSP Name from first row:', dspData[0] ? dspData[0]['DSP Name'] : 'NO DATA');
+    console.log('Route Code from first row:', dspData[0] ? dspData[0]['Route Code'] : 'NO DATA');
     
     // Enable HVTS generation if we have DSP data
     if (dspData && dspData.length > 0) {
@@ -315,9 +364,67 @@ function checkEnableButtons() {
     document.getElementById('reloadSearchResults').disabled = !hasSearch;
 }
 
+// Helper function to normalize strings for matching
+function normalizeString(str) {
+    if (!str) return '';
+    return str.toString().trim().toLowerCase();
+}
+
+// Helper function to find resource ID from stem data with flexible matching
+function findResourceId(sortZone, stemData) {
+    if (!sortZone || !stemData || stemData.length === 0) {
+        console.log(`No stem data or sort zone provided. Using sort zone as-is: "${sortZone}"`);
+        return sortZone; // Return original if no match
+    }
+    
+    const normalizedSortZone = normalizeString(sortZone);
+    
+    // Try to find exact match first (case-insensitive)
+    let stemMatch = stemData.find(stem => {
+        const stemLabel = normalizeString(stem.label || stem.Label || stem.LABEL || '');
+        return stemLabel === normalizedSortZone;
+    });
+    
+    // If no exact match, try partial match
+    if (!stemMatch) {
+        stemMatch = stemData.find(stem => {
+            const stemLabel = normalizeString(stem.label || stem.Label || stem.LABEL || '');
+            return stemLabel.includes(normalizedSortZone) || normalizedSortZone.includes(stemLabel);
+        });
+    }
+    
+    // If match found, return resourceId (try different possible column names)
+    if (stemMatch) {
+        const resourceId = stemMatch.resourceId || 
+                          stemMatch.ResourceId || 
+                          stemMatch.RESOURCEID || 
+                          stemMatch.resourceID ||
+                          stemMatch['Resource ID'] ||
+                          stemMatch['resource id'] ||
+                          stemMatch['RESOURCE ID'];
+        
+        if (resourceId) {
+            console.log(`✓ Matched "${sortZone}" to resourceId: "${resourceId}"`);
+            return resourceId;
+        }
+    }
+    
+    console.warn(`⚠ No resourceId found for sort zone: "${sortZone}" - using sort zone value`);
+    return sortZone; // Return original if no resourceId found
+}
+
 // Generate barcodes - FIXED VERSION
 function generateBarcodes() {
-    if (!stemData || !searchData) return;
+    console.log('=== Generate Barcodes Called ===');
+    console.log('stemData exists:', !!stemData);
+    console.log('searchData exists:', !!searchData);
+    console.log('stemData length:', stemData ? stemData.length : 0);
+    console.log('searchData length:', searchData ? searchData.length : 0);
+    
+    if (!stemData || !searchData) {
+        console.error('Missing data!');
+        return;
+    }
     
     const resultsContainer = document.getElementById('barcodeResults');
     resultsContainer.innerHTML = '';
@@ -326,38 +433,70 @@ function generateBarcodes() {
     // Get unique packages from search data
     const packages = new Map();
     
-    searchData.forEach(item => {
-        const trackingId = item['Tracking ID'];
-        const sortZone = item['Sort Zone'] || '';
+    console.log('=== Processing Search Data ===');
+    searchData.forEach((item, index) => {
+        if (index < 3) { // Log first 3 items in detail
+            console.log(`Item ${index}:`, item);
+            console.log(`  Keys:`, Object.keys(item));
+        }
+        
+        // Try different possible column names for tracking ID
+        const trackingId = item['Tracking ID'] || 
+                          item['TrackingID'] || 
+                          item['tracking id'] || 
+                          item['TRACKING ID'] ||
+                          item['Tracking Id'] ||
+                          item['trackingId'];
+        
+        // Try different possible column names for sort zone
+        const sortZone = item['Sort Zone'] || 
+                        item['SortZone'] || 
+                        item['sort zone'] || 
+                        item['SORT ZONE'] ||
+                        item['Sort zone'] ||
+                        item['sortZone'] ||
+                        '';
+        
+        if (index < 3) {
+            console.log(`  Tracking ID found: "${trackingId}"`);
+            console.log(`  Sort Zone found: "${sortZone}"`);
+        }
         
         if (trackingId && !packages.has(trackingId)) {
-            // Find the resource ID from stem data
-            let resourceId = sortZone; // Default to sort zone if not found
-            
-            if (sortZone) {
-                const stemMatch = stemData.find(stem => stem.label === sortZone);
-                if (stemMatch) {
-                    resourceId = stemMatch.resourceId;
-                }
-            }
+            // Find the resource ID from stem data using improved matching
+            const resourceId = findResourceId(sortZone, stemData);
             
             packages.set(trackingId, {
                 trackingId: trackingId,
                 sortZone: sortZone,
                 resourceId: resourceId,
-                cluster: item['Cluster'] || '',
-                aisle: item['Aisle'] || ''
+                cluster: item['Cluster'] || item['cluster'] || item['CLUSTER'] || '',
+                aisle: item['Aisle'] || item['aisle'] || item['AISLE'] || ''
             });
+            
+            if (index < 3) {
+                console.log(`  ✓ Added to packages map`);
+            }
+        } else {
+            if (index < 3) {
+                console.log(`  ✗ NOT added (trackingId: ${!!trackingId}, already exists: ${packages.has(trackingId)})`);
+            }
         }
     });
+    
+    console.log('=== Packages Map Created ===');
+    console.log('Total unique packages:', packages.size);
     
     // Convert to array for navigation
     const packagesArray = Array.from(packages.values());
     
     if (packagesArray.length === 0) {
+        console.error('No packages found after processing!');
         resultsContainer.innerHTML = '<p style="text-align: center; color: var(--secondary-color);">No packages to process</p>';
         return;
     }
+    
+    console.log('First 3 packages:', packagesArray.slice(0, 3));
     
     // Store packages for navigation
     window.currentPackages = packagesArray;
@@ -380,6 +519,12 @@ function generateBarcodes() {
                 <path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/>
             </svg>
         </button>
+        <button class="btn-primary" id="showAllBarcodes" onclick="toggleShowAll()" style="margin-left: 2rem;">
+            <svg viewBox="0 0 24 24" width="20" height="20">
+                <path d="M3,5H9V11H3V5M5,7V9H7V7H5M11,7H21V9H11V7M11,15H21V17H11V15M5,20L1.5,16.5L2.91,15.09L5,17.17L9.59,12.59L11,14L5,20Z"/>
+            </svg>
+            Show All
+        </button>
     `;
     
     resultsContainer.appendChild(navContainer);
@@ -388,6 +533,12 @@ function generateBarcodes() {
     const barcodeContainer = document.createElement('div');
     barcodeContainer.id = 'singleBarcodeContainer';
     resultsContainer.appendChild(barcodeContainer);
+    
+    // Create container for all barcodes (hidden by default)
+    const allBarcodesContainer = document.createElement('div');
+    allBarcodesContainer.id = 'allBarcodesContainer';
+    allBarcodesContainer.style.display = 'none';
+    resultsContainer.appendChild(allBarcodesContainer);
     
     // Display first barcode
     displaySingleBarcode(0);
@@ -485,11 +636,127 @@ function navigateBarcode(direction) {
     }
 }
 
+// Toggle between single and all barcodes view
+function toggleShowAll() {
+    const singleContainer = document.getElementById('singleBarcodeContainer');
+    const allContainer = document.getElementById('allBarcodesContainer');
+    const showAllBtn = document.getElementById('showAllBarcodes');
+    const navBtns = document.querySelectorAll('.nav-btn');
+    const counter = document.getElementById('barcodeCounter');
+    
+    if (allContainer.style.display === 'none') {
+        // Switch to "Show All" mode
+        singleContainer.style.display = 'none';
+        allContainer.style.display = 'block';
+        showAllBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="20" height="20">
+                <path d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/>
+            </svg>
+            Show One
+        `;
+        navBtns.forEach(btn => btn.style.display = 'none');
+        counter.style.display = 'none';
+        
+        // Display all barcodes if not already displayed
+        if (allContainer.children.length === 0) {
+            displayAllBarcodes();
+        }
+    } else {
+        // Switch back to single view
+        singleContainer.style.display = 'block';
+        allContainer.style.display = 'none';
+        showAllBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="20" height="20">
+                <path d="M3,5H9V11H3V5M5,7V9H7V7H5M11,7H21V9H11V7M11,15H21V17H11V15M5,20L1.5,16.5L2.91,15.09L5,17.17L9.59,12.59L11,14L5,20Z"/>
+            </svg>
+            Show All
+        `;
+        navBtns.forEach(btn => btn.style.display = 'flex');
+        counter.style.display = 'block';
+    }
+}
+
+// Display all barcodes in a grid
+function displayAllBarcodes() {
+    const packages = window.currentPackages;
+    if (!packages) return;
+    
+    const allContainer = document.getElementById('allBarcodesContainer');
+    allContainer.innerHTML = '';
+    
+    packages.forEach((pkg, index) => {
+        const item = document.createElement('div');
+        item.className = 'barcode-item-grid';
+        
+        item.innerHTML = `
+            <h3>Tracking: ${pkg.trackingId}</h3>
+            <p>Sort Zone: ${pkg.sortZone}</p>
+            ${pkg.cluster ? `<p>Cluster: ${pkg.cluster} | Aisle: ${pkg.aisle}</p>` : ''}
+            <div class="barcode-images-grid">
+                <div class="barcode-container-grid">
+                    <canvas id="qr-tracking-${index}"></canvas>
+                    <div class="barcode-label">QR Tracking</div>
+                    <div class="barcode-value">${pkg.trackingId}</div>
+                </div>
+                <div class="barcode-container-grid">
+                    <canvas id="qr-sz-${index}"></canvas>
+                    <div class="barcode-label">QR Sort Zone</div>
+                    <div class="barcode-value">${pkg.resourceId}</div>
+                </div>
+            </div>
+        `;
+        
+        allContainer.appendChild(item);
+    });
+    
+    // Generate all QR codes after a short delay
+    setTimeout(() => {
+        packages.forEach((pkg, index) => {
+            // QR for tracking ID
+            const trackingCanvas = document.getElementById(`qr-tracking-${index}`);
+            if (trackingCanvas) {
+                QRCode.toCanvas(trackingCanvas, pkg.trackingId, {
+                    width: 200,
+                    margin: 2,
+                    color: {
+                        dark: '#000000',
+                        light: '#ffffff'
+                    },
+                    errorCorrectionLevel: 'M'
+                }, function(error) {
+                    if (error) console.error(`Error generating tracking QR ${index}:`, error);
+                });
+            }
+            
+            // QR for sort zone
+            const szCanvas = document.getElementById(`qr-sz-${index}`);
+            if (szCanvas) {
+                QRCode.toCanvas(szCanvas, pkg.resourceId, {
+                    width: 200,
+                    margin: 2,
+                    color: {
+                        dark: '#000000',
+                        light: '#ffffff'
+                    },
+                    errorCorrectionLevel: 'M'
+                }, function(error) {
+                    if (error) console.error(`Error generating sort zone QR ${index}:`, error);
+                });
+            }
+        });
+    }, 100);
+}
+
 // Make navigation functions available globally
 window.navigateBarcode = navigateBarcode;
+window.toggleShowAll = toggleShowAll;
 
 // Generate HVTS sheets - FIXED VERSION
 function generateHVTS() {
+    console.log('=== Generate HVTS Called ===');
+    console.log('dspData exists:', !!dspData);
+    console.log('dspData length:', dspData ? dspData.length : 0);
+    
     if (!dspData || dspData.length === 0) {
         showNotification('No DSP data available. Please reload search results with DSP information.', 'error');
         return;
@@ -498,61 +765,120 @@ function generateHVTS() {
     const resultsContainer = document.getElementById('hvtsResults');
     resultsContainer.innerHTML = '';
     
-    // Group packages by DSP Name
+    // Group packages by DSP
     const dspPackages = new Map();
     
-    dspData.forEach(item => {
-        const dspName = item['DSP Name'];
-        const trackingId = item['Tracking ID'];
-        const routeCode = item['Route Code']; // CA_A... codes
-        const orderAmount = item['Order Amount'] || '0';
+    console.log('=== Processing DSP Data for HVTS ===');
+    dspData.forEach((item, index) => {
+        if (index < 3) { // Log first 3 items in detail
+            console.log(`DSP Item ${index}:`, item);
+            console.log(`  Keys:`, Object.keys(item));
+        }
         
-        if (dspName && trackingId) {
-            if (!dspPackages.has(dspName)) {
-                dspPackages.set(dspName, []);
+        const trackingId = item['Tracking ID'] || 
+                          item['TrackingID'] || 
+                          item['tracking id'] || 
+                          item['TRACKING ID'] ||
+                          item['Tracking Id'] ||
+                          item['trackingId'];
+        
+        const dspName = item['DSP Name'] || 
+                       item['dsp name'] || 
+                       item['DSP'] ||
+                       item['dspName'] ||
+                       item['Dsp Name'];
+        
+        const routeCode = item['Route Code'] || 
+                         item['route code'] || 
+                         item['RouteCode'] ||
+                         item['routeCode'] ||
+                         '';
+        
+        const orderAmount = item['Order Amount'] || 
+                           item['order amount'] || 
+                           item['OrderAmount'] ||
+                           item['orderAmount'] ||
+                           '0';
+        
+        if (index < 3) {
+            console.log(`  Tracking ID: "${trackingId}"`);
+            console.log(`  DSP Name: "${dspName}"`);
+            console.log(`  Route Code: "${routeCode}"`);
+            console.log(`  Order Amount: "${orderAmount}"`);
+        }
+        
+        if (!trackingId || !dspName) {
+            if (index < 3) {
+                console.log(`  ✗ Skipped (missing trackingId or dspName)`);
             }
-            
-            dspPackages.get(dspName).push({
-                trackingId: trackingId,
-                routeCode: routeCode,
-                orderAmount: orderAmount
-            });
+            return;
+        }
+        
+        if (!dspPackages.has(dspName)) {
+            dspPackages.set(dspName, []);
+            console.log(`  ✓ Created new DSP group: "${dspName}"`);
+        }
+        
+        dspPackages.get(dspName).push({
+            trackingId: trackingId,
+            routeCode: routeCode,
+            orderAmount: orderAmount
+        });
+        
+        if (index < 3) {
+            console.log(`  ✓ Added to DSP group`);
         }
     });
     
-    // Generate HVTS for each DSP
+    console.log('=== DSP Packages Map Created ===');
+    console.log('Total DSPs:', dspPackages.size);
+    console.log('DSP Names:', Array.from(dspPackages.keys()));
+    
+    if (dspPackages.size === 0) {
+        showNotification('No valid DSP packages found. Check that your file has "Tracking ID" and "DSP Name" columns.', 'error');
+        return;
+    }
+    
+    // Create HVTS items for each DSP
     dspPackages.forEach((packages, dspName) => {
-        const hvtsItem = createHVTSItem(dspName, packages);
+        console.log(`Creating HVTS for ${dspName} with ${packages.length} packages`);
+        
+        // Find DSP info
+        let dspDetails = dspInfo[dspName];
+        
+        // If not found by exact name, try to find by code
+        if (!dspDetails) {
+            for (let key in dspInfo) {
+                if (dspInfo[key].name === dspName) {
+                    dspDetails = dspInfo[key];
+                    break;
+                }
+            }
+        }
+        
+        // If still not found, create basic info
+        if (!dspDetails) {
+            dspDetails = {
+                wave: 0,
+                name: dspName,
+                email: 'Not available'
+            };
+            console.log(`  ⚠ DSP "${dspName}" not in dspInfo database, using defaults`);
+        }
+        
+        const hvtsItem = createHVTSItem(dspDetails, packages);
         resultsContainer.appendChild(hvtsItem);
     });
     
-    if (dspPackages.size === 0) {
-        resultsContainer.innerHTML = '<p style="text-align: center; color: var(--secondary-color);">No DSP assignments found</p>';
-    } else {
-        document.getElementById('sendChime').disabled = false;
-        showNotification(`Generated HVTS for ${dspPackages.size} DSPs`, 'success');
-    }
+    // Enable Chime notification button and Download All button
+    document.getElementById('sendChime').disabled = false;
+    document.getElementById('downloadAllHVTS').disabled = false;
+    
+    showNotification(`Generated HVTS for ${dspPackages.size} DSPs`, 'success');
 }
 
-// Create HVTS item - FIXED VERSION
-function createHVTSItem(dspName, packages) {
-    // Find DSP info by name
-    let dsp = dspInfo[dspName];
-    
-    // If not found, search by name match
-    if (!dsp) {
-        for (let key in dspInfo) {
-            if (dspInfo[key].name === dspName) {
-                dsp = dspInfo[key];
-                break;
-            }
-        }
-    }
-    
-    // If still not found, create default
-    if (!dsp) {
-        dsp = { name: dspName, email: 'dap8-dispatcher@amazon.com', wave: 0 };
-    }
+// Create HVTS item
+function createHVTSItem(dsp, packages) {
     
     const totalValue = packages.reduce((sum, pkg) => sum + parseFloat(pkg.orderAmount || 0), 0);
     
@@ -674,6 +1000,41 @@ function downloadHVTS(dspName, dspEmail, dspWave, packages) {
     doc.save(fileName);
     
     showNotification(`PDF downloaded: ${fileName}`, 'success');
+}
+
+// Download All HVTS PDFs
+function downloadAllHVTS() {
+    const resultsContainer = document.getElementById('hvtsResults');
+    const dspItems = resultsContainer.querySelectorAll('.hvts-item');
+    
+    if (dspItems.length === 0) {
+        showNotification('No HVTS generated. Please generate HVTS first.', 'error');
+        return;
+    }
+    
+    showNotification(`Downloading ${dspItems.length} HVTS PDFs...`, 'success');
+    
+    // Download each PDF with a small delay to avoid browser blocking
+    let downloadCount = 0;
+    dspItems.forEach((item, index) => {
+        setTimeout(() => {
+            const downloadBtn = item.querySelector('.download-btn');
+            if (downloadBtn) {
+                const packages = JSON.parse(downloadBtn.getAttribute('data-packages'));
+                const dspName = downloadBtn.getAttribute('data-dsp-name');
+                const dspEmail = downloadBtn.getAttribute('data-dsp-email');
+                const dspWave = downloadBtn.getAttribute('data-dsp-wave');
+                
+                downloadHVTS(dspName, dspEmail, dspWave, packages);
+                downloadCount++;
+                
+                // Show final notification after last download
+                if (downloadCount === dspItems.length) {
+                    showNotification(`✅ Downloaded all ${downloadCount} HVTS PDFs!`, 'success');
+                }
+            }
+        }, index * 500); // 500ms delay between each download
+    });
 }
 
 // Send Chime notifications

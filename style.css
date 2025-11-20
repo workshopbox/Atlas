@@ -475,6 +475,66 @@ body {
     word-break: break-all;
 }
 
+/* Grid View for All Barcodes */
+#allBarcodesContainer {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 2rem;
+    margin-top: 2rem;
+}
+
+.barcode-item-grid {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 15px;
+    box-shadow: 0 8px 25px var(--shadow-medium);
+    text-align: center;
+    transition: all 0.3s ease;
+    border: 2px solid var(--ice-blue);
+}
+
+.barcode-item-grid:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 35px var(--shadow-heavy);
+    border-color: var(--accent-color);
+}
+
+.barcode-item-grid h3 {
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+    font-size: 1.1rem;
+}
+
+.barcode-item-grid p {
+    color: var(--secondary-color);
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+}
+
+.barcode-images-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.barcode-container-grid {
+    background: var(--frost-blue);
+    padding: 1rem;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.barcode-container-grid canvas {
+    width: 200px !important;
+    height: 200px !important;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+}
+
 /* Old barcode styles (keeping for compatibility) */
 .barcode-results {
     margin-top: 2rem;
